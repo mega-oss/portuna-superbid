@@ -1,0 +1,164 @@
+name: Superbid - Scraper Distribuído (MENSAL)
+
+on:
+  schedule:
+    # DIA 1 DE CADA MÊS - Distribuído ao longo do dia
+    - cron: '0 0 1 * *'   # carros-motos
+    - cron: '0 1 1 * *'   # materiais-construcao-civil
+    - cron: '0 2 1 * *'   # cozinhas-restaurantes
+    - cron: '0 3 1 * *'   # caminhoes-onibus
+    - cron: '0 4 1 * *'   # movimentacao-transporte
+    - cron: '0 5 1 * *'   # alimentos-bebidas
+    - cron: '0 6 1 * *'   # imoveis
+    - cron: '0 7 1 * *'   # embarcacoes-aeronaves
+    - cron: '0 8 1 * *'   # animais
+    - cron: '0 9 1 * *'   # maquinas-pesadas-agricolas
+    - cron: '0 10 1 * *'  # partes-pecas
+    - cron: '0 11 1 * *'  # tecnologia (ajustado)
+    - cron: '0 12 1 * *'  # sucatas-materiais-residuos
+    - cron: '0 13 1 * *'  # eletrodomesticos (ajustado)
+    - cron: '0 14 1 * *'  # bolsas-canetas-joias-relogios
+    - cron: '0 15 1 * *'  # moveis-decoracao
+    - cron: '0 16 1 * *'  # artes-decoracao-colecionismo
+    - cron: '0 17 1 * *'  # industrial-maquinas-equipamentos
+    - cron: '0 18 1 * *'  # oportunidades
+
+  workflow_dispatch:
+    inputs:
+      categoria:
+        description: 'Categoria para scraping'
+        required: true
+        type: choice
+        options:
+          - carros-motos
+          - caminhoes-onibus
+          - imoveis
+          - maquinas-pesadas-agricolas
+          - tecnologia
+          - eletrodomesticos
+          - moveis-decoracao
+          - industrial-maquinas-equipamentos
+          - materiais-construcao-civil
+          - movimentacao-transporte
+          - embarcacoes-aeronaves
+          - partes-e-pecas
+          - sucatas-materiais-residuos
+          - bolsas-canetas-joias-e-relogios
+          - artes-decoracao-colecionismo
+          - oportunidades
+          - cozinhas-e-restaurantes
+          - alimentos-e-bebidas
+          - animais
+          - FULL-UPDATE
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 178  # 2h58min
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          # Removido o cache
+
+      - name: Install Dependencies
+        run: |
+          if [ -f scrapers/requirements.txt ]; then
+            pip install -r scrapers/requirements.txt
+          else
+            pip install requests
+          fi
+
+      - name: Detectar Categoria
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CATEGORIA="${{ github.event.inputs.categoria }}"
+          else
+            # Detecta pela hora UTC no dia 1 de cada mês
+            HOUR=$(date -u +%H)
+            case "$HOUR" in
+              00) CATEGORIA="carros-motos" ;;
+              01) CATEGORIA="materiais-construcao-civil" ;;
+              02) CATEGORIA="cozinhas-e-restaurantes" ;;
+              03) CATEGORIA="caminhoes-onibus" ;;
+              04) CATEGORIA="movimentacao-transporte" ;;
+              05) CATEGORIA="alimentos-e-bebidas" ;;
+              06) CATEGORIA="imoveis" ;;
+              07) CATEGORIA="embarcacoes-aeronaves" ;;
+              08) CATEGORIA="animais" ;;
+              09) CATEGORIA="maquinas-pesadas-agricolas" ;;
+              10) CATEGORIA="partes-e-pecas" ;;
+              11) CATEGORIA="tecnologia" ;;
+              12) CATEGORIA="sucatas-materiais-residuos" ;;
+              13) CATEGORIA="eletrodomesticos" ;;
+              14) CATEGORIA="bolsas-canetas-joias-e-relogios" ;;
+              15) CATEGORIA="moveis-decoracao" ;;
+              16) CATEGORIA="artes-decoracao-colecionismo" ;;
+              17) CATEGORIA="industrial-maquinas-equipamentos" ;;
+              18) CATEGORIA="oportunidades" ;;
+              *) CATEGORIA="carros-motos" ;;
+            esac
+          fi
+          
+          echo "categoria=$CATEGORIA" >> $GITHUB_OUTPUT
+          echo "Categoria: $CATEGORIA (UTC hora $HOUR, dia 1 do mês)"
+
+      - name: Executar Scraper
+        working-directory: scrapers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_ACTIONS: 'true'
+        run: |
+          echo "======================================"
+          echo "SUPERBID SCRAPER - MENSAL (DIA 1)"
+          echo "======================================"
+          echo "Horário: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "Categoria: ${{ steps.detect.outputs.categoria }}"
+          echo "Timeout: 2h58min"
+          echo "======================================"
+          
+          START=$(date +%s)
+          
+          if [ "${{ steps.detect.outputs.categoria }}" = "FULL-UPDATE" ]; then
+            python superbid_scraper.py --full-update
+          else
+            python superbid_scraper.py --categoria ${{ steps.detect.outputs.categoria }}
+          fi
+          
+          EXIT_CODE=$?
+          END=$(date +%s)
+          DURATION=$(( (END - START) / 60 ))
+          
+          echo ""
+          echo "======================================"
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "CONCLUÍDO em ${DURATION} min"
+          else
+            echo "FALHOU (código $EXIT_CODE) após ${DURATION} min"
+          fi
+          echo "======================================"
+          
+          exit $EXIT_CODE
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: superbid-${{ steps.detect.outputs.categoria }}-${{ github.run_number }}
+          path: scrapers/superbid_data/*.json
+          retention-days: 7
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "## Superbid - ${{ steps.detect.outputs.categoria }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Horário UTC:** $(date -u '+%Y-%m-%d %H:%M')" >> $GITHUB_STEP_SUMMARY
+          echo "**Próxima execução:** Dia 1 do próximo mês" >> $GITHUB_STEP_SUMMARY
