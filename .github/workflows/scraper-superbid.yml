@@ -1,0 +1,90 @@
+# ===== scraper-superbid.yml =====
+# SUPERBID - Todas as ~20 categorias de uma vez
+# Execução: 5:05 UTC = 02:05 BRT (horário de Brasília)
+# Timeout: 178min (2h58min interno do script)
+
+name: Superbid - Full Update
+
+on:
+  schedule:
+    - cron: '5 5 * * *'  # TODO DIA às 5:05 UTC = 02:05 BRT
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 178  # 2h58min
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Dependencies
+        run: |
+          pip install requests
+      
+      - name: Run Superbid Scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          cd scrapers
+          echo "======================================"
+          echo "🚀 SUPERBID - FULL UPDATE"
+          echo "======================================"
+          echo "📅 Início: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🇧🇷 Horário Brasil: $(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M:%S BRT')"
+          echo "📦 Processando ~20 categorias"
+          echo "⏱️  Timeout: 2h58min"
+          echo "======================================"
+          echo ""
+          
+          START=$(date +%s)
+          
+          python superbid_scraper.py --full-update
+          
+          EXIT_CODE=$?
+          END=$(date +%s)
+          DURATION=$(( (END - START) / 60 ))
+          
+          echo ""
+          echo "======================================"
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ SUPERBID CONCLUÍDO em ${DURATION} minutos"
+          else
+            echo "❌ SUPERBID FALHOU (código $EXIT_CODE) após ${DURATION} minutos"
+          fi
+          echo "🕐 Término: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🇧🇷 Horário Brasil: $(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M:%S BRT')"
+          echo "======================================"
+          
+          exit $EXIT_CODE
+      
+      - name: Upload Artifacts on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: superbid-error-logs-${{ github.run_number }}
+          path: scrapers/superbid_data/*.json
+          retention-days: 7
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🏷️ Superbid - Full Update" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Horário UTC:** $(date -u '+%Y-%m-%d %H:%M')" >> $GITHUB_STEP_SUMMARY
+          echo "**Horário Brasil:** $(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M')" >> $GITHUB_STEP_SUMMARY
+          echo "**Categorias:** Todas (~20)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Scraping concluído com sucesso!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Falhou – veja os logs para detalhes." >> $GITHUB_STEP_SUMMARY
+          fi
