@@ -88,6 +88,13 @@ class SupabaseClient:
         
         return self._rpc_available
     
+    def insert_raw(self, source: str, data: Any) -> bool:
+        """
+        Método mantido para compatibilidade com scrapers antigos
+        Não faz nada (raw_auctions foi removido)
+        """
+        return True
+    
     def upsert_normalized(self, items: List[Dict]) -> Dict[str, int]:
         """
         UPSERT otimizado com batching inteligente
